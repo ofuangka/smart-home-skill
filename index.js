@@ -9,6 +9,9 @@ const ErrorType = {
 };
 
 exports.handler = (request, context, callback) => {
+    if (request.endpoint && request.endpoint.scope && request.endpoint.scope.token) {
+
+    }
     if (request.directive && request.directive.header) {
         switch (request.directive.header.namespace) {
             case 'Alexa.Discovery':
@@ -36,7 +39,6 @@ function handleControllerRequest(request, context, callback) {
             .then(upstreamResponse => {
                 return getControllerResponse(endpoint);
             })
-            .then(JSON.stringify)
             .then(response => callback(null, response))
             .catch(err => callback(null, getErrorResponse(ErrorType.BRIDGE_UNREACHABLE, err, endpoint)));
     } else {
@@ -49,11 +51,10 @@ function handleDiscoveryRequest(request, context, callback) {
         .then(JSON.parse)
         .then(convertDevices)
         .then(getDiscoverResponse)
-        .then(JSON.stringify)
         .then(response => callback(null, response))
         .catch(err => {
             console.error(err);
-            callback(null, getDiscoverResponse(JSON.stringify([])));
+            callback(null, getDiscoverResponse([]));
         });
 }
 
@@ -61,9 +62,9 @@ function convertDevices(devices) {
     return devices.map(device => {
         return {
             endpointId: device.id,
-            manufacturerName: device.name,
+            manufacturerName: device.manufacturer,
             friendlyName: device.name,
-            description: device.name,
+            description: device.platform,
             displayCategories: getDisplayCategories(device),
             capabilities: getCapabilities(device),
             cookie: device.capabilities
@@ -117,7 +118,7 @@ function getHomeassistantDeviceCategory(device) {
 }
 
 function getDiscoverResponse(endpoints) {
-    return getResponse('Alexa.Discover', 'DiscoverResponse', {
+    return getResponse('Alexa.Discovery', 'DiscoverResponse', {
         endpoints: endpoints
     });
 }
