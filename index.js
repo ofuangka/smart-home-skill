@@ -97,18 +97,20 @@ function getCapabilities(device) {
         case 'rokuapp':
             return [getCapability('Alexa.PowerController')];
         case 'roku':
-            return [getCapability('Alexa.PlaybackController')];
+            return [getCapability('Alexa.PlaybackController', {
+                supportedOperations: Object.keys(device.capabilities)
+            })];
         default:
             return [];
     }
 }
 
-function getCapability(interface) {
-    return {
+function getCapability(interface, merge) {
+    return Object.assign({}, merge, {
         type: 'AlexaInterface',
         interface: interface,
         version: '3'
-    };
+    });
 }
 
 function getHomeassistantDeviceCategory(device) {
@@ -118,7 +120,7 @@ function getHomeassistantDeviceCategory(device) {
 }
 
 function getDiscoverResponse(endpoints) {
-    return getResponse('Alexa.Discovery', 'DiscoverResponse', {
+    return getResponse('Alexa.Discovery', 'Discover.Response', {
         endpoints: endpoints
     });
 }
