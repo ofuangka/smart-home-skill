@@ -8,60 +8,58 @@ const ErrorType = {
     INVALID_DIRECTIVE: 'INVALID_DIRECTIVE'
 };
 
-exports.handler = (request, context, callback) => {
+exports.handler = (request, context) => {
     if (request.endpoint && request.endpoint.scope && request.endpoint.scope.token) {
 
     }
     if (request.directive && request.directive.header) {
         switch (request.directive.header.namespace) {
             case 'Alexa.Discovery':
-                handleDiscoveryRequest(request, context, callback);
+                handleDiscoveryRequest(request, context);
                 break;
             case 'Alexa.PowerController':
-                handleControllerRequest(request, context, callback);
+                handleControllerRequest(request, context);
                 break;
             case 'Alexa.StepSpeakerController':
-                handleControllerRequest(request, context, callback);
+                handleControllerRequest(request, context);
                 break;
             case 'Alexa.PlaybackController':
-                handleControllerRequest(request, context, callback);
+                handleControllerRequest(request, context);
                 break;
-            default: callback(new Error(`Unsupported namespace: ${request.directive.header.namespace}`));
+            default: context.fail(new Error(`Unsupported namespace: ${request.directive.header.namespace}`));
         }
     }
 };
 
-function handleControllerRequest(request, context, callback) {
+function handleControllerRequest(request, context) {
     const endpoint = request.directive.endpoint;
-    const command = request.directive.header.name;
-    if (endpoint.cookie && endpoint.cookie.hasOwnProperty && endpoint.cookie.hasOwnProperty(command)) {
-        post(`${SMART_PREFIX}/devices/${endpoint.endpointId}/actions/${endpoint.cookie[command]}`)
-            .then(upstreamResponse => {
-                return getControllerResponse(endpoint);
-            })
-            .then(response => callback(null, response))
-            .catch(err => callback(null, getErrorResponse(ErrorType.BRIDGE_UNREACHABLE, err, endpoint)));
+    const actionId = request.directive.header.name;
+    const correlationToken = request.directive.header.correlationToken;
+    if (endpoint.cookie && endpoint.cookie.hasOwnProperty && endpoint.cookie.hasOwnProperty(actionId)) {
+        post(`${SMART_PREFIX}/devices/${endpoint.endpointId}/actions/${actionId}`)
+            .then(upstreamResponse => context.succeed(getControllerResponse(endpoint, correlationToken)))
+            .catch(err => context.fail(getErrorResponse(ErrorType.BRIDGE_UNREACHABLE, err, correlationToken, endpoint)));
     } else {
-        callback(null, getErrorResponse(ErrorType.INVALID_DIRECTIVE, `command not available on endpoint: ${command}, ${endpoint.endpointId}`, endpoint));
+        context.fail(getErrorResponse(ErrorType.INVALID_DIRECTIVE, `command not available on endpoint: ${actionId}, ${endpoint.endpointId}`, correlationToken, endpoint));
     }
 }
 
-function handleDiscoveryRequest(request, context, callback) {
+function handleDiscoveryRequest(request, context) {
+    const correlationToken = request.directive.header.correlationToken;
     get(`${SMART_PREFIX}/devices`)
         .then(JSON.parse)
         .then(convertDevices)
-        .then(getDiscoverResponse)
-        .then(response => callback(null, response))
+        .then(endpoints => context.succeed(getDiscoverResponse(endpoints, correlationToken)))
         .catch(err => {
             console.error(err);
-            callback(null, getDiscoverResponse([]));
+            context.succeed(getDiscoverResponse([], correlationToken));
         });
 }
 
 function convertDevices(devices) {
     return devices.map(device => {
         return {
-            endpointId: device.id,
+            endpointId: cleanseDeviceId(device.id),
             manufacturerName: device.manufacturer,
             friendlyName: device.name,
             description: device.platform,
@@ -70,6 +68,10 @@ function convertDevices(devices) {
             cookie: device.capabilities
         };
     });
+}
+
+function cleanseDeviceId(deviceId) {
+    return deviceId.replace(/\./g, '#');
 }
 
 function getDisplayCategories(device) {
@@ -119,33 +121,34 @@ function getHomeassistantDeviceCategory(device) {
     return ['LIGHT', 'SWITCH'].indexOf(domain) !== -1 ? domain : 'OTHER';
 }
 
-function getDiscoverResponse(endpoints) {
-    return getResponse('Alexa.Discovery', 'Discover.Response', {
+function getDiscoverResponse(endpoints, correlationToken) {
+    return getResponse('Alexa.Discovery', 'Discover.Response', correlationToken, {
         endpoints: endpoints
     });
 }
 
-function getControllerResponse(endpoint) {
+function getControllerResponse(endpoint, correlationToken) {
     return Object.assign({
         context: {
             properties: []
         }
-    }, getResponse('Alexa', 'Response', {}, { endpoint: endpoint }));
+    }, getResponse('Alexa', 'Response', correlationToken, {}, { endpoint: endpoint }));
 }
 
-function getErrorResponse(type, message, endpoint) {
-    return getResponse('Alexa', 'ErrorResponse', {
+function getErrorResponse(type, message, correlationToken, endpoint) {
+    return getResponse('Alexa', 'ErrorResponse', correlationToken, {
         type: type,
         message: message
     }, { endpoint: endpoint });
 }
 
-function getResponse(namespace, name, payload, eventMerge) {
+function getResponse(namespace, name, correlationToken, payload, eventMerge) {
     return {
         event: Object.assign({}, eventMerge, {
             header: {
                 namespace: namespace,
                 name: name,
+                correlationToken: correlationToken,
                 payloadVersion: '3',
                 messageId: Date.now()
             },
