@@ -35,7 +35,7 @@ function handleControllerRequest(request, context) {
     const endpoint = request.directive.endpoint;
     const actionId = request.directive.header.name;
     const correlationToken = request.directive.header.correlationToken;
-    if (endpoint.cookie && endpoint.cookie.hasOwnProperty && endpoint.cookie.hasOwnProperty(actionId)) {
+    if (endpoint.cookie && endpoint.cookie.indexOf && endpoint.cookie.indexOf(actionId) !== -1) {
         post(`${SMART_PREFIX}/devices/${endpoint.endpointId}/actions/${actionId}`)
             .then(upstreamResponse => context.succeed(getControllerResponse(endpoint, correlationToken)))
             .catch(err => context.fail(getErrorResponse(ErrorType.BRIDGE_UNREACHABLE, err, correlationToken, endpoint)));
